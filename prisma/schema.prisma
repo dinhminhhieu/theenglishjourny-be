@@ -1,0 +1,182 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+}
+
+/// OAuth providers. Đăng nhập bằng email/password dùng User.passwordHash, không cần Account.
+enum AuthProvider {
+  GOOGLE
+  FACEBOOK
+  APPLE
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum LearningGoal {
+  COMMUNICATION
+  TRAVEL
+  BUSINESS
+  TEST_PREP
+  ACADEMIC
+  HOBBY
+  CAREER
+  IMMIGRATION
+  CHILDREN
+}
+
+// ---------- Auth & users ----------
+
+model User {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  email           String    @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String?
+  username        String?   @unique
+  displayName     String?
+  avatarUrl       String?
+  bio             String?
+  phoneNumber     String?   @unique
+  /// ISO 639-1, vd "vi"
+  nativeLanguage  String?   @db.Char(2)
+  /// ISO 3166-1 alpha-2, vd "VN"
+  country         String?   @db.Char(2)
+  gender          Gender?
+  dateOfBirth     DateTime? @db.Date
+
+  role        Role       @default(USER)
+  status      UserStatus @default(ACTIVE)
+  banReason   String?
+  lastLoginAt DateTime?
+
+  learningGoals    LearningGoal[]
+  dailyGoalMinutes Int            @default(15)
+
+  accounts          Account[]
+  devices           Device[]
+  refreshTokens     RefreshToken[]
+  verificationCodes VerificationCode[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("users")
+}
+
+model Account {
+  id                String       @id @default(uuid(7)) @db.Uuid
+  userId            String       @db.Uuid
+  provider          AuthProvider
+  /// Id do provider cấp (Google "sub", Facebook user id, Apple "sub")
+  providerAccountId String
+  createdAt         DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+/// Thiết bị của user, dùng cho push notification và theo dõi lần online gần nhất.
+model Device {
+  id         String         @id @default(uuid(7)) @db.Uuid
+  userId     String         @db.Uuid
+  pushToken  String         @unique
+  platform   DevicePlatform
+  lastSeenAt DateTime       @default(now())
+  createdAt  DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("devices")
+}
+
+// ---------- Content ----------
+
+model Topic {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  name        String  @unique
+  description String?
+  imageUrl    String?
+  isActive    Boolean @default(true)
+
+  createdBy String?
+  updatedBy String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("topics")
+}
+
+/// Refresh token dạng opaque, chỉ lưu hash SHA-256. Rotate mỗi lần refresh.
+model RefreshToken {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+enum VerificationPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+/// Mã OTP gửi qua email. Chỉ lưu HMAC của mã; hết hạn sau vài phút và giới hạn số lần nhập sai.
+model VerificationCode {
+  id         String              @id @default(uuid(7)) @db.Uuid
+  userId     String              @db.Uuid
+  purpose    VerificationPurpose
+  codeHash   String
+  attempts   Int                 @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("verification_codes")
+}
