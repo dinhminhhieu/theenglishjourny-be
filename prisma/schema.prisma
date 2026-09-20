@@ -2,9 +2,10 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "cjs"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
 }
 
 datasource db {
@@ -137,14 +138,59 @@ model Topic {
   createdBy String?
   updatedBy String?
 
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  deletedAt  DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  topicWords TopicWord[]
 
   @@map("topics")
 }
 
-/// Refresh token dạng opaque, chỉ lưu hash SHA-256. Rotate mỗi lần refresh.
+model Vocabulary {
+  id            String  @id @default(uuid(7)) @db.Uuid
+  word          String  @unique
+  pronunciation String?
+  audioUrl      String?
+  imageUrl      String?
+
+  // Học thuật — từ điển gốc, cho flashcard
+  academic       Json @default("[]") /// AcademicSection[]
+  academicIdioms Json @default("[]") /// AcademicIdiom[]
+
+  // Thân thiện — giải thích chi tiết, cho trang từ
+  definitions   Json @default("[]") /// DefinitionSection[]
+  usageExamples Json @default("[]") /// UsageExample[]
+  advancedUsage Json @default("[]") /// TermItem[]
+  variants      Json @default("[]") /// TermItem[]
+  synonyms      Json @default("[]") /// TermItem[]
+  antonyms      Json @default("[]") /// TermItem[]
+  idioms        Json @default("[]") /// TermItem[]
+  phrases       Json @default("[]") /// TermItem[]
+  otherSections Json @default("[]") /// OtherSection[] { title, items: TermItem[] }
+
+  relations Json @default("{}") /// Relations {synonyms, antonyms, mentioned_in}
+
+  createdAt DateTime @default(now())
+
+  topics TopicWord[]
+
+  // text_pattern_ops để LIKE 'abc%' dùng được index bất kể collation của DB
+  @@index([word(ops: raw("text_pattern_ops"))], map: "vocabularies_word_pattern_idx")
+  @@map("vocabularies")
+}
+
+model TopicWord {
+  topicId      String @db.Uuid
+  vocabularyId String @db.Uuid
+
+  topic      Topic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  vocabulary Vocabulary @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, vocabularyId])
+  @@index([vocabularyId])
+  @@map("topic_words")
+}
+
 model RefreshToken {
   id        String    @id @default(uuid(7)) @db.Uuid
   userId    String    @db.Uuid

@@ -1,0 +1,37 @@
+# Postgres cho môi trường dev local.
+#
+#   docker compose up -d        # khởi động
+#   docker compose down         # dừng, giữ dữ liệu
+#   docker compose down -v      # dừng và xoá sạch dữ liệu
+#
+# Sau khi chạy, đặt trong .env:
+#   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/theieltsfoundation"
+# rồi tạo bảng: npx prisma migrate deploy
+#
+# Các biến POSTGRES_* bên dưới đọc từ .env nếu có, không có thì dùng mặc định.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: theieltsfoundation-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-theieltsfoundation}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-theieltsfoundation}',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
