@@ -7,6 +7,8 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { validateEnv } from './config/env.validation';
 import { AuthModule } from './modules/auth/auth.module';
+import { TopicModule } from './modules/topic/topic.module';
+import { VocabularyModule } from './modules/vocabulary/vocabulary.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -16,6 +18,8 @@ import { PrismaModule } from './prisma/prisma.module';
     PrismaModule,
     UsersModule,
     AuthModule,
+    TopicModule,
+    VocabularyModule,
   ],
   controllers: [AppController],
   providers: [
