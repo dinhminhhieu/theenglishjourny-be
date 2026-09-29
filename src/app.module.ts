@@ -9,6 +9,10 @@ import { validateEnv } from './config/env.validation';
 import { AuthModule } from './modules/auth/auth.module';
 import { TopicModule } from './modules/topic/topic.module';
 import { VocabularyModule } from './modules/vocabulary/vocabulary.module';
+import { SkillModule } from './modules/skill/skill.module';
+import { LevelModule } from './modules/level/level.module';
+import { GrammarModule } from './modules/grammar/grammar.module';
+import { CourseModule } from './modules/course/course.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -20,6 +24,10 @@ import { PrismaModule } from './prisma/prisma.module';
     AuthModule,
     TopicModule,
     VocabularyModule,
+    SkillModule,
+    LevelModule,
+    GrammarModule,
+    CourseModule,
   ],
   controllers: [AppController],
   providers: [
