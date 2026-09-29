@@ -10,6 +10,11 @@ import {
   GrammarLessonDto,
 } from './dto/grammar-lesson.dto';
 import { GrammarSectionDto } from './dto/grammar-section.dto';
+import {
+  PublicGrammarCategoryDto,
+  PublicGrammarLessonDetailDto,
+  PublicGrammarLessonDto,
+} from './dto/public-grammar.dto';
 
 export type GrammarCategoryRow = GrammarCategory & {
   _count: { lessons: number };
@@ -21,6 +26,10 @@ export type GrammarLessonRow = GrammarLesson & {
 
 export type GrammarLessonDetailRow = GrammarLessonRow & {
   sections: GrammarSection[];
+};
+
+export type PublicGrammarLessonDetailRow = GrammarLessonDetailRow & {
+  category: { title: string };
 };
 
 export function toGrammarCategoryDto(
@@ -89,6 +98,54 @@ export function toGrammarLessonDetailDto(
 ): GrammarLessonDetailDto {
   return {
     ...toGrammarLessonDto(row),
+    sections: row.sections.map(toGrammarSectionDto),
+  };
+}
+
+// ---------- Bản cho người học ----------
+
+export function toPublicGrammarCategoryDto(
+  row: GrammarCategoryRow,
+): PublicGrammarCategoryDto {
+  return {
+    id: row.id,
+    title: row.title,
+    subtitle: row.subtitle,
+    description: row.description,
+    imageUrl: row.imageUrl,
+    lessonCount: row._count.lessons,
+  };
+}
+
+export function toPublicGrammarLessonDto(
+  row: GrammarLessonRow,
+): PublicGrammarLessonDto {
+  return {
+    id: row.id,
+    grammarCategoryId: row.grammarCategoryId,
+    code: row.code,
+    title: row.title,
+    subtitle: row.subtitle,
+    summary: row.summary,
+    tier: row.tier,
+    levelFrom: row.levelFrom,
+    levelTo: row.levelTo,
+    levelId: row.levelId,
+    highlights: Array.isArray(row.highlights)
+      ? (row.highlights as unknown as GrammarHighlightDto[])
+      : [],
+    estimatedMinutes: row.estimatedMinutes,
+    publishedAt: row.publishedAt,
+    sectionCount: row._count.sections,
+  };
+}
+
+export function toPublicGrammarLessonDetailDto(
+  row: PublicGrammarLessonDetailRow,
+): PublicGrammarLessonDetailDto {
+  return {
+    ...toPublicGrammarLessonDto(row),
+    categoryTitle: row.category.title,
     sections: row.sections.map(toGrammarSectionDto),
   };
 }

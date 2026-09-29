@@ -4,7 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { isCefrRangeValid } from '../../common/constants/cefr.constant';
+import {
+  cefrLevelsFrom,
+  cefrLevelsUpTo,
+  isCefrRangeValid,
+} from '../../common/constants/cefr.constant';
 import { buildPaginationMeta } from '../../common/dto/pagination-meta.dto';
 import { PaginatedResult } from '../../common/types/paginated-result.type';
 import { CefrLevel, LessonStatus, Prisma } from '../../generated/prisma/client';
@@ -17,11 +21,18 @@ import {
   UpdateGrammarLessonDto,
 } from './dto/grammar-lesson.dto';
 import { ReplaceGrammarSectionsDto } from './dto/grammar-section.dto';
+import {
+  PublicGrammarLessonDetailDto,
+  PublicGrammarLessonDto,
+  PublicGrammarLessonQueryDto,
+} from './dto/public-grammar.dto';
 import { GrammarCategoryService } from './grammar-category.service';
 import {
   GrammarLessonRow,
   toGrammarLessonDetailDto,
   toGrammarLessonDto,
+  toPublicGrammarLessonDetailDto,
+  toPublicGrammarLessonDto,
 } from './grammar.mapper';
 import { validateSectionContent } from './section-content.validator';
 
@@ -35,6 +46,18 @@ const LESSON_DETAIL_INCLUDE = {
   ...LESSON_INCLUDE,
   sections: { orderBy: { sortOrder: 'asc' as const } },
 } satisfies Prisma.GrammarLessonInclude;
+
+const PUBLIC_LESSON_DETAIL_INCLUDE = {
+  ...LESSON_DETAIL_INCLUDE,
+  category: { select: { title: true } },
+} satisfies Prisma.GrammarLessonInclude;
+
+/** Người học chỉ thấy bài đã phát hành, chưa xoá, thuộc chủ điểm đang bật. */
+const PUBLISHED_LESSON_WHERE = {
+  deletedAt: null,
+  status: LessonStatus.PUBLISHED,
+  category: { deletedAt: null, isActive: true },
+} satisfies Prisma.GrammarLessonWhereInput;
 
 @Injectable()
 export class GrammarLessonService {
@@ -76,6 +99,65 @@ export class GrammarLessonService {
       items: rows.map(toGrammarLessonDto),
       meta: buildPaginationMeta(totalResults, pageIndex, pageLimit),
     };
+  }
+
+  async findPublished(
+    query: PublicGrammarLessonQueryDto,
+  ): Promise<PaginatedResult<PublicGrammarLessonDto>> {
+    const { pageIndex, pageLimit } = query;
+    const where: Prisma.GrammarLessonWhereInput = {
+      ...PUBLISHED_LESSON_WHERE,
+      ...(query.grammarCategoryId
+        ? { grammarCategoryId: query.grammarCategoryId }
+        : {}),
+      ...(query.tier ? { tier: query.tier } : {}),
+      ...(query.level
+        ? {
+            levelFrom: { in: cefrLevelsUpTo(query.level) },
+            levelTo: { in: cefrLevelsFrom(query.level) },
+          }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { title: { contains: query.search, mode: 'insensitive' } },
+              { code: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const [totalResults, rows] = await Promise.all([
+      this.prisma.grammarLesson.count({ where }),
+      this.prisma.grammarLesson.findMany({
+        where,
+        include: LESSON_INCLUDE,
+        orderBy: [
+          { category: { sortOrder: 'asc' } },
+          { sortOrder: 'asc' },
+          { createdAt: 'asc' },
+        ],
+        skip: (pageIndex - 1) * pageLimit,
+        take: pageLimit,
+      }),
+    ]);
+    return {
+      items: rows.map(toPublicGrammarLessonDto),
+      meta: buildPaginationMeta(totalResults, pageIndex, pageLimit),
+    };
+  }
+
+  /** Mã bài không phân biệt hoa thường trên URL. */
+  async findPublishedByCode(
+    code: string,
+  ): Promise<PublicGrammarLessonDetailDto> {
+    const row = await this.prisma.grammarLesson.findFirst({
+      where: { ...PUBLISHED_LESSON_WHERE, code: code.trim().toUpperCase() },
+      include: PUBLIC_LESSON_DETAIL_INCLUDE,
+    });
+    if (!row) {
+      throw new NotFoundException(LESSON_NOT_FOUND);
+    }
+    return toPublicGrammarLessonDetailDto(row);
   }
 
   async findOne(id: string): Promise<GrammarLessonDetailDto> {
