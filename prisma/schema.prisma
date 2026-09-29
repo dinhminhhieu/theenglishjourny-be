@@ -26,7 +26,6 @@ enum UserStatus {
   BANNED
 }
 
-/// OAuth providers. Đăng nhập bằng email/password dùng User.passwordHash, không cần Account.
 enum AuthProvider {
   GOOGLE
   FACEBOOK
@@ -57,6 +56,102 @@ enum LearningGoal {
   CHILDREN
 }
 
+enum LessonTier {
+  CORE
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum CefrLevel {
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+}
+
+enum LessonStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// Kiểu bố cục của một section trong bài ngữ pháp. Mỗi type có hình dạng `content` riêng.
+enum SectionType {
+  USE_CASES
+  FORMULA_MATRIX
+  RULES_TABLE
+  PRONUNCIATION
+  COMPARISON
+  COMMON_MISTAKES
+  CALLOUT
+  RICH_TEXT
+}
+
+enum LessonProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+/// Loại block trong một unit của khoá học, mỗi block ứng với một kỹ năng.
+enum LessonBlockKind {
+  VOCABULARY
+  GRAMMAR
+  LISTENING
+  READING
+  WRITING
+  SPEAKING
+}
+
+enum EnrollmentSource {
+  PURCHASE
+  GIFT
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  BANK_TRANSFER
+  VNPAY
+  MOMO
+}
+
+enum XpKind {
+  EARN
+  SPEND
+}
+
+enum XpReason {
+  BLOCK_COMPLETED
+  LESSON_COMPLETED
+  STREAK
+  AI_GRADING
+  TEST_UNLOCK
+  REFUND
+  ADMIN_ADJUST
+}
+
+/// Tính năng có hạn mức sử dụng theo ngày.
+enum FeatureKey {
+  AI_WRITING
+  AI_SPEAKING
+}
+
+/// Lượt dùng đến từ đâu: miễn phí trong ngày, đổi XP, hay quyền của khoá đã mua.
+enum UsageSource {
+  FREE_DAILY
+  XP
+  PLAN
+}
+
 // ---------- Auth & users ----------
 
 model User {
@@ -69,10 +164,6 @@ model User {
   avatarUrl       String?
   bio             String?
   phoneNumber     String?   @unique
-  /// ISO 639-1, vd "vi"
-  nativeLanguage  String?   @db.Char(2)
-  /// ISO 3166-1 alpha-2, vd "VN"
-  country         String?   @db.Char(2)
   gender          Gender?
   dateOfBirth     DateTime? @db.Date
 
@@ -84,14 +175,31 @@ model User {
   learningGoals    LearningGoal[]
   dailyGoalMinutes Int            @default(15)
 
-  accounts          Account[]
-  devices           Device[]
-  refreshTokens     RefreshToken[]
-  verificationCodes VerificationCode[]
+  /// XP đang có để tiêu (đổi lượt chấm AI, mở đề). Tiêu không làm giảm xpTotal.
+  xpBalance      Int       @default(0)
+  /// XP tích luỹ trọn đời, dùng xếp hạng và huy hiệu.
+  xpTotal        Int       @default(0)
+  streakDays     Int       @default(0)
+  /// Ngày học gần nhất theo giờ Việt Nam, để tính streak và trần XP theo ngày.
+  lastActiveDate DateTime? @db.Date
+
+  accounts              Account[]
+  devices               Device[]
+  refreshTokens         RefreshToken[]
+  verificationCodes     VerificationCode[]
+  grammarLessonProgress UserGrammarLessonProgress[]
+  lessonProgress        UserLessonProgress[]
+  enrollments           Enrollment[]
+  orders                Order[]
+  xpTransactions        XpTransaction[]
+  featureUsages         FeatureUsage[]
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
+  level   Level?  @relation(fields: [levelId], references: [id])
+  levelId String? @db.Uuid
 
   @@map("users")
 }
@@ -128,6 +236,44 @@ model Device {
 
 // ---------- Content ----------
 
+model Skill {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  name        String  @unique
+  description String?
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lessonBlocks LessonBlock[]
+
+  @@map("skills")
+}
+
+model Level {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  cefrLevel   CefrLevel @unique
+  name        String
+  description String?
+
+  toeicScoreMin Int?
+  toeicScoreMax Int?
+  ieltsMin      Decimal? @db.Decimal(2, 1)
+  ieltsMax      Decimal? @db.Decimal(2, 1)
+
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          User[]
+  grammarLessons GrammarLesson[]
+
+  @@map("levels")
+}
+
 model Topic {
   id          String  @id @default(uuid(7)) @db.Uuid
   name        String  @unique
@@ -138,10 +284,12 @@ model Topic {
   createdBy String?
   updatedBy String?
 
-  deletedAt  DateTime?
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
   topicWords TopicWord[]
+  lessons    Lesson[]
 
   @@map("topics")
 }
@@ -210,7 +358,6 @@ enum VerificationPurpose {
   PASSWORD_RESET
 }
 
-/// Mã OTP gửi qua email. Chỉ lưu HMAC của mã; hết hạn sau vài phút và giới hạn số lần nhập sai.
 model VerificationCode {
   id         String              @id @default(uuid(7)) @db.Uuid
   userId     String              @db.Uuid
@@ -225,4 +372,322 @@ model VerificationCode {
 
   @@index([userId, purpose])
   @@map("verification_codes")
+}
+
+// ---------- Grammar ----------
+model GrammarCategory {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  title       String  @unique
+  subtitle    String?
+  description String?
+  imageUrl    String?
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+
+  createdBy String?
+  updatedBy String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  lessons GrammarLesson[]
+
+  @@map("grammar_categories")
+}
+
+model GrammarLesson {
+  id       String  @id @default(uuid(7)) @db.Uuid
+  code     String  @unique
+  title    String
+  subtitle String?
+  summary  String?
+
+  tier      LessonTier
+  levelFrom CefrLevel
+  levelTo   CefrLevel
+
+  highlights Json @default("[]")
+
+  estimatedMinutes Int?
+  sortOrder        Int          @default(0)
+  status           LessonStatus @default(DRAFT)
+  publishedAt      DateTime?
+
+  createdBy String?
+  updatedBy String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  grammarCategoryId String                      @db.Uuid
+  category          GrammarCategory             @relation(fields: [grammarCategoryId], references: [id], onDelete: Cascade)
+  sections          GrammarSection[]
+  progress          UserGrammarLessonProgress[]
+  lessonBlocks      LessonBlock[]
+  level             Level?                      @relation(fields: [levelId], references: [id])
+  levelId           String?                     @db.Uuid
+
+  @@index([grammarCategoryId, sortOrder])
+  @@map("grammar_lessons")
+}
+
+model GrammarSection {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  type      SectionType
+  code      String
+  title     String
+  subtitle  String?
+  content   Json        @default("{}")
+  sortOrder Int         @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  grammarLessonId String        @db.Uuid
+  lesson          GrammarLesson @relation(fields: [grammarLessonId], references: [id], onDelete: Cascade)
+
+  @@unique([grammarLessonId, code])
+  @@index([grammarLessonId, sortOrder])
+  @@map("grammar_sections")
+}
+
+model UserGrammarLessonProgress {
+  status          LessonProgressStatus @default(NOT_STARTED)
+  lastSectionCode String?
+  startedAt       DateTime             @default(now())
+  completedAt     DateTime?
+  updatedAt       DateTime             @updatedAt
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  grammarLessonId String        @db.Uuid
+  lesson          GrammarLesson @relation(fields: [grammarLessonId], references: [id], onDelete: Cascade)
+
+  @@id([userId, grammarLessonId])
+  @@index([grammarLessonId])
+  @@map("user_grammar_lesson_progress")
+}
+
+// ---------- Courses ----------
+
+/// Khoá học bán theo band, vd "IELTS 4.0 đến 5.0". isLocked = false là khoá học thử miễn phí.
+model Course {
+  id           String  @id @default(uuid(7)) @db.Uuid
+  code         String  @unique
+  title        String
+  subtitle     String?
+  description  String?
+  thumbnailUrl String?
+
+  levelFrom      CefrLevel?
+  levelTo        CefrLevel?
+  targetBandFrom Decimal?   @db.Decimal(2, 1)
+  targetBandTo   Decimal?   @db.Decimal(2, 1)
+
+  /// true = phải mua (có Enrollment) mới học được; false = mở cho mọi người
+  isLocked   Boolean @default(true)
+  /// Giá bán, đơn vị VND, số nguyên
+  price      Int?
+  currency   String  @default("VND")
+  /// Số ngày được học kể từ khi ghi danh, null = trọn đời
+  accessDays Int?
+
+  sortOrder   Int          @default(0)
+  status      LessonStatus @default(DRAFT)
+  publishedAt DateTime?
+
+  createdBy String?
+  updatedBy String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  lessons     Lesson[]
+  enrollments Enrollment[]
+  orders      Order[]
+
+  @@map("courses")
+}
+
+/// Một unit trong khoá học, vd "Unit 3: Travel". Nội dung là các LessonBlock theo kỹ năng.
+model Lesson {
+  id           String  @id @default(uuid(7)) @db.Uuid
+  code         String
+  title        String
+  subtitle     String?
+  description  String?
+  thumbnailUrl String?
+
+  /// XP nhận khi hoàn thành cả unit lần đầu
+  xpReward         Int  @default(50)
+  estimatedMinutes Int?
+
+  sortOrder   Int          @default(0)
+  status      LessonStatus @default(DRAFT)
+  publishedAt DateTime?
+
+  createdBy String?
+  updatedBy String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  courseId String @db.Uuid
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  /// Chủ đề từ vựng của unit, block VOCABULARY lấy từ TopicWord
+  topicId String? @db.Uuid
+  topic   Topic?  @relation(fields: [topicId], references: [id])
+
+  blocks   LessonBlock[]
+  progress UserLessonProgress[]
+
+  @@unique([courseId, code])
+  @@index([courseId, sortOrder])
+  @@map("lessons")
+}
+
+/// Một phần trong unit ứng với một kỹ năng. GRAMMAR trỏ tới bài ngữ pháp;
+/// LISTENING, READING, WRITING, SPEAKING sẽ trỏ tới nhóm câu hỏi khi có cây đề.
+model LessonBlock {
+  id           String          @id @default(uuid(7)) @db.Uuid
+  kind         LessonBlockKind
+  title        String
+  instructions String?
+  /// XP nhận khi hoàn thành block lần đầu
+  xpReward     Int             @default(20)
+  sortOrder    Int             @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lessonId String @db.Uuid
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  skillId String @db.Uuid
+  skill   Skill  @relation(fields: [skillId], references: [id])
+
+  grammarLessonId String?        @db.Uuid
+  grammarLesson   GrammarLesson? @relation(fields: [grammarLessonId], references: [id])
+
+  @@index([lessonId, sortOrder])
+  @@map("lesson_blocks")
+}
+
+model UserLessonProgress {
+  status            LessonProgressStatus @default(NOT_STARTED)
+  /// Id các block đã hoàn thành, để tính % và biết block nào đã nhận XP
+  completedBlockIds String[]             @default([])
+  startedAt         DateTime             @default(now())
+  completedAt       DateTime?
+  updatedAt         DateTime             @updatedAt
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  lessonId String @db.Uuid
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@id([userId, lessonId])
+  @@index([lessonId])
+  @@map("user_lesson_progress")
+}
+
+/// Quyền học một khoá. Guard chỉ cần kiểm tra bảng này, không quan tâm mua hay được tặng.
+model Enrollment {
+  source    EnrollmentSource
+  startsAt  DateTime         @default(now())
+  expiresAt DateTime?
+  createdAt DateTime         @default(now())
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  courseId String @db.Uuid
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  /// Đơn hàng sinh ra quyền này, null nếu tặng hoặc admin cấp
+  orderId String? @unique @db.Uuid
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  @@id([userId, courseId])
+  @@index([courseId])
+  @@map("enrollments")
+}
+
+/// Đơn mua khoá. Với chuyển khoản, `code` là nội dung khách ghi khi chuyển để đối soát.
+model Order {
+  id          String          @id @default(uuid(7)) @db.Uuid
+  /// Mã ngắn, dễ gõ, vd "IF7K2Q"
+  code        String          @unique
+  amount      Int
+  currency    String          @default("VND")
+  provider    PaymentProvider
+  /// Mã giao dịch phía ngân hàng hoặc cổng thanh toán
+  providerRef String?
+  status      OrderStatus     @default(PENDING)
+  /// Hết hạn thanh toán, quá thì chuyển CANCELLED
+  expiresAt   DateTime
+  paidAt      DateTime?
+  note        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+
+  courseId String @db.Uuid
+  course   Course @relation(fields: [courseId], references: [id])
+
+  enrollment Enrollment?
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("orders")
+}
+
+// ---------- XP & hạn mức ----------
+
+/// Sổ cái XP. Mỗi dòng là một lần cộng hoặc trừ; số dư và tổng trên User là bản cache.
+/// unique (userId, reason, refId) chặn cộng hai lần cho cùng một bài; STREAK dùng refId = "YYYY-MM-DD".
+model XpTransaction {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  kind         XpKind
+  reason       XpReason
+  /// Dương khi EARN, âm khi SPEND
+  amount       Int
+  /// Id bài, block, lượt chấm... tuỳ reason
+  refId        String?
+  balanceAfter Int
+  createdAt    DateTime @default(now())
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reason, refId])
+  @@index([userId, createdAt])
+  @@map("xp_transactions")
+}
+
+/// Mỗi lần dùng một tính năng có hạn mức. Đếm theo ngày để biết còn lượt miễn phí không.
+model FeatureUsage {
+  id        String      @id @default(uuid(7)) @db.Uuid
+  feature   FeatureKey
+  source    UsageSource
+
+  refId     String?
+  createdAt DateTime    @default(now())
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, feature, createdAt])
+  @@map("feature_usages")
 }

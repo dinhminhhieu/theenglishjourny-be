@@ -4,10 +4,6 @@
 #   docker compose down         # dừng, giữ dữ liệu
 #   docker compose down -v      # dừng và xoá sạch dữ liệu
 #
-# Sau khi chạy, đặt trong .env:
-#   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/theieltsfoundation"
-# rồi tạo bảng: npx prisma migrate deploy
-#
 # Các biến POSTGRES_* bên dưới đọc từ .env nếu có, không có thì dùng mặc định.
 
 services:

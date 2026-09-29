@@ -88,6 +88,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
           errors: null,
         };
       }
+      // Vi phạm khoá ngoại: tham chiếu tới bản ghi không tồn tại, hoặc xoá bản ghi đang được dùng.
+      if (exception.code === 'P2003') {
+        return {
+          statusCode: HttpStatus.CONFLICT,
+          message:
+            'Dữ liệu tham chiếu không hợp lệ hoặc đang được sử dụng ở nơi khác',
+          errors: null,
+        };
+      }
     }
 
     return {
