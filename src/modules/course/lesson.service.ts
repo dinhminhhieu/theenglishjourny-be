@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { buildPaginationMeta } from '../../common/dto/pagination-meta.dto';
+import type { AppUser } from '../../common/types/app-user.type';
 import { PaginatedResult } from '../../common/types/paginated-result.type';
 import {
   LessonBlockKind,
@@ -12,13 +13,18 @@ import {
   Prisma,
 } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CourseAccessService } from './course-access.service';
 import { CourseService } from './course.service';
 import {
   LESSON_DETAIL_INCLUDE,
   LESSON_INCLUDE,
   LessonRow,
+  PUBLIC_LESSON_DETAIL_INCLUDE,
+  PUBLISHED_COURSE_WHERE,
+  PUBLISHED_LESSON_WHERE,
   toLessonDetailDto,
   toLessonDto,
+  toPublicLessonDetailDto,
 } from './course.mapper';
 import { ReplaceLessonBlocksDto } from './dto/lesson-block.dto';
 import {
@@ -28,6 +34,7 @@ import {
   LessonQueryDto,
   UpdateLessonDto,
 } from './dto/lesson.dto';
+import { PublicLessonDetailDto } from './dto/public-course.dto';
 
 const LESSON_NOT_FOUND = 'Không tìm thấy unit';
 
@@ -36,6 +43,7 @@ export class LessonService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly courses: CourseService,
+    private readonly access: CourseAccessService,
   ) {}
 
   async findAll(query: LessonQueryDto): Promise<PaginatedResult<LessonDto>> {
@@ -71,6 +79,25 @@ export class LessonService {
       items: rows.map(toLessonDto),
       meta: buildPaginationMeta(totalResults, pageIndex, pageLimit),
     };
+  }
+
+  /**
+   * Nội dung unit cho người học. Unit và khoá chứa nó đều phải đã phát hành;
+   * khoá bị khoá thì cần quyền học còn hiệu lực.
+   */
+  async findPublishedById(
+    id: string,
+    user?: AppUser,
+  ): Promise<PublicLessonDetailDto> {
+    const row = await this.prisma.lesson.findFirst({
+      where: { ...PUBLISHED_LESSON_WHERE, id, course: PUBLISHED_COURSE_WHERE },
+      include: PUBLIC_LESSON_DETAIL_INCLUDE,
+    });
+    if (!row) {
+      throw new NotFoundException(LESSON_NOT_FOUND);
+    }
+    await this.access.assertCanLearn(row.course, user);
+    return toPublicLessonDetailDto(row);
   }
 
   async findOne(id: string): Promise<LessonDetailDto> {

@@ -1,8 +1,16 @@
 import { decimalToNumber } from '../../common/utils/decimal.util';
-import { Prisma } from '../../generated/prisma/client';
+import { LessonStatus, Prisma } from '../../generated/prisma/client';
+import type { CourseAccess } from './course-access.service';
 import { CourseDetailDto, CourseDto } from './dto/course.dto';
 import { LessonBlockDto } from './dto/lesson-block.dto';
 import { LessonDetailDto, LessonDto } from './dto/lesson.dto';
+import {
+  PublicCourseDetailDto,
+  PublicCourseDto,
+  PublicLessonBlockDto,
+  PublicLessonDetailDto,
+  PublicLessonSummaryDto,
+} from './dto/public-course.dto';
 
 export const LESSON_INCLUDE = {
   _count: { select: { blocks: true } },
@@ -28,6 +36,62 @@ export const COURSE_DETAIL_INCLUDE = {
     include: LESSON_INCLUDE,
   },
 } satisfies Prisma.CourseInclude;
+
+// ---------- Bản cho người học: chỉ nội dung đã phát hành, chưa xoá ----------
+
+export const PUBLISHED_COURSE_WHERE = {
+  deletedAt: null,
+  status: LessonStatus.PUBLISHED,
+} satisfies Prisma.CourseWhereInput;
+
+export const PUBLISHED_LESSON_WHERE = {
+  deletedAt: null,
+  status: LessonStatus.PUBLISHED,
+} satisfies Prisma.LessonWhereInput;
+
+export const PUBLIC_COURSE_INCLUDE = {
+  _count: { select: { lessons: { where: PUBLISHED_LESSON_WHERE } } },
+} satisfies Prisma.CourseInclude;
+
+export const PUBLIC_COURSE_DETAIL_INCLUDE = {
+  ...PUBLIC_COURSE_INCLUDE,
+  lessons: {
+    where: PUBLISHED_LESSON_WHERE,
+    orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }],
+    include: LESSON_INCLUDE,
+  },
+} satisfies Prisma.CourseInclude;
+
+export const PUBLIC_LESSON_DETAIL_INCLUDE = {
+  ...LESSON_INCLUDE,
+  course: { select: { id: true, code: true, title: true, isLocked: true } },
+  blocks: {
+    orderBy: { sortOrder: 'asc' as const },
+    include: {
+      skill: { select: { name: true } },
+      grammarLesson: {
+        select: {
+          id: true,
+          code: true,
+          title: true,
+          status: true,
+          deletedAt: true,
+          category: { select: { isActive: true, deletedAt: true } },
+        },
+      },
+    },
+  },
+} satisfies Prisma.LessonInclude;
+
+export type PublicCourseRow = Prisma.CourseGetPayload<{
+  include: typeof PUBLIC_COURSE_INCLUDE;
+}>;
+export type PublicCourseDetailRow = Prisma.CourseGetPayload<{
+  include: typeof PUBLIC_COURSE_DETAIL_INCLUDE;
+}>;
+export type PublicLessonDetailRow = Prisma.LessonGetPayload<{
+  include: typeof PUBLIC_LESSON_DETAIL_INCLUDE;
+}>;
 
 export type LessonRow = Prisma.LessonGetPayload<{
   include: typeof LESSON_INCLUDE;
@@ -108,5 +172,92 @@ export function toLessonDetailDto(row: LessonDetailRow): LessonDetailDto {
       grammarLessonId: block.grammarLessonId,
       sortOrder: block.sortOrder,
     })),
+  };
+}
+
+// ---------- Bản cho người học ----------
+
+export function toPublicCourseDto(
+  row: PublicCourseRow,
+  access: CourseAccess,
+): PublicCourseDto {
+  return {
+    id: row.id,
+    code: row.code,
+    title: row.title,
+    subtitle: row.subtitle,
+    description: row.description,
+    thumbnailUrl: row.thumbnailUrl,
+    levelFrom: row.levelFrom,
+    levelTo: row.levelTo,
+    targetBandFrom: decimalToNumber(row.targetBandFrom),
+    targetBandTo: decimalToNumber(row.targetBandTo),
+    isLocked: row.isLocked,
+    price: row.price,
+    currency: row.currency,
+    accessDays: row.accessDays,
+    publishedAt: row.publishedAt,
+    lessonCount: row._count.lessons,
+    hasAccess: access.hasAccess,
+    accessExpiresAt: access.accessExpiresAt,
+  };
+}
+
+export function toPublicCourseDetailDto(
+  row: PublicCourseDetailRow,
+  access: CourseAccess,
+): PublicCourseDetailDto {
+  return {
+    ...toPublicCourseDto(row, access),
+    lessons: row.lessons.map(toPublicLessonSummaryDto),
+  };
+}
+
+export function toPublicLessonSummaryDto(
+  row: LessonRow,
+): PublicLessonSummaryDto {
+  return {
+    id: row.id,
+    code: row.code,
+    title: row.title,
+    subtitle: row.subtitle,
+    description: row.description,
+    thumbnailUrl: row.thumbnailUrl,
+    xpReward: row.xpReward,
+    estimatedMinutes: row.estimatedMinutes,
+    blockCount: row._count.blocks,
+  };
+}
+
+export function toPublicLessonDetailDto(
+  row: PublicLessonDetailRow,
+): PublicLessonDetailDto {
+  return {
+    ...toPublicLessonSummaryDto(row),
+    courseId: row.course.id,
+    courseCode: row.course.code,
+    courseTitle: row.course.title,
+    topicId: row.topicId,
+    blocks: row.blocks.map((block): PublicLessonBlockDto => {
+      const grammar = block.grammarLesson;
+      // Bài ngữ pháp chưa phát hành thì không lộ ra, khớp với GET /grammar/lessons/:code.
+      const isGrammarVisible =
+        grammar !== null &&
+        grammar.status === LessonStatus.PUBLISHED &&
+        grammar.deletedAt === null &&
+        grammar.category.isActive &&
+        grammar.category.deletedAt === null;
+      return {
+        id: block.id,
+        kind: block.kind,
+        skillName: block.skill.name,
+        title: block.title,
+        instructions: block.instructions,
+        xpReward: block.xpReward,
+        grammarLesson: isGrammarVisible
+          ? { id: grammar.id, code: grammar.code, title: grammar.title }
+          : null,
+      };
+    }),
   };
 }

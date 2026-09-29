@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { buildPaginationMeta } from '../../common/dto/pagination-meta.dto';
 import { PaginatedResult } from '../../common/types/paginated-result.type';
-import { Prisma } from '../../generated/prisma/client';
+import { LessonStatus, Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateGrammarCategoryDto,
@@ -13,12 +13,31 @@ import {
   GrammarCategoryQueryDto,
   UpdateGrammarCategoryDto,
 } from './dto/grammar-category.dto';
-import { GrammarCategoryRow, toGrammarCategoryDto } from './grammar.mapper';
+import {
+  PublicGrammarCategoryDto,
+  PublicGrammarCategoryQueryDto,
+} from './dto/public-grammar.dto';
+import {
+  GrammarCategoryRow,
+  toGrammarCategoryDto,
+  toPublicGrammarCategoryDto,
+} from './grammar.mapper';
 
 const CATEGORY_NOT_FOUND = 'Không tìm thấy chủ điểm ngữ pháp';
 
 const CATEGORY_INCLUDE = {
   _count: { select: { lessons: { where: { deletedAt: null } } } },
+} satisfies Prisma.GrammarCategoryInclude;
+
+/** Người học chỉ đếm bài đã phát hành. */
+const PUBLIC_CATEGORY_INCLUDE = {
+  _count: {
+    select: {
+      lessons: {
+        where: { deletedAt: null, status: LessonStatus.PUBLISHED },
+      },
+    },
+  },
 } satisfies Prisma.GrammarCategoryInclude;
 
 @Injectable()
@@ -48,6 +67,34 @@ export class GrammarCategoryService {
     ]);
     return {
       items: rows.map(toGrammarCategoryDto),
+      meta: buildPaginationMeta(totalResults, pageIndex, pageLimit),
+    };
+  }
+
+  /** Danh sách cho người học: chỉ chủ điểm đang bật và chưa xoá. */
+  async findPublished(
+    query: PublicGrammarCategoryQueryDto,
+  ): Promise<PaginatedResult<PublicGrammarCategoryDto>> {
+    const { pageIndex, pageLimit } = query;
+    const where: Prisma.GrammarCategoryWhereInput = {
+      deletedAt: null,
+      isActive: true,
+      ...(query.search
+        ? { title: { contains: query.search, mode: 'insensitive' } }
+        : {}),
+    };
+    const [totalResults, rows] = await Promise.all([
+      this.prisma.grammarCategory.count({ where }),
+      this.prisma.grammarCategory.findMany({
+        where,
+        include: PUBLIC_CATEGORY_INCLUDE,
+        orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+        skip: (pageIndex - 1) * pageLimit,
+        take: pageLimit,
+      }),
+    ]);
+    return {
+      items: rows.map(toPublicGrammarCategoryDto),
       meta: buildPaginationMeta(totalResults, pageIndex, pageLimit),
     };
   }
