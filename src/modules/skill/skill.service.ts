@@ -55,20 +55,6 @@ export class SkillService {
     return toSkillDto(updated);
   }
 
-  /** Xoá cứng, chỉ khi chưa có block bài học nào dùng. Có thì tắt isActive thay vì xoá. */
-  async remove(id: string): Promise<void> {
-    await this.getOrThrow(id);
-    const inUse = await this.prisma.lessonBlock.count({
-      where: { skillId: id },
-    });
-    if (inUse > 0) {
-      throw new ConflictException(
-        `Kỹ năng đang được dùng trong ${inUse} block bài học, hãy tắt thay vì xoá`,
-      );
-    }
-    await this.prisma.skill.delete({ where: { id } });
-  }
-
   private async getOrThrow(id: string): Promise<Skill> {
     const skill = await this.prisma.skill.findUnique({ where: { id } });
     if (!skill) {

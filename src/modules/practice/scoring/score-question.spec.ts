@@ -271,3 +271,28 @@ describe('TEXT_SET: hai cách ghép bằng điểm thì giữ thứ tự ngườ
     ]);
   });
 });
+
+describe('TEXT strict: so khớp nghiêm cho bài chính tả và viết số bằng chữ', () => {
+  it.each<[string, ResponseValue, number]>([
+    ['đúng chính tả', 'Three', 1],
+    ['viết bằng số thì sai', '3', 0],
+    ['vẫn bỏ qua dấu câu', 'three.', 1],
+  ])('%s', (_label, response, score) => {
+    const result = scoreQuestion(
+      { marks: 1, answer: { kind: 'TEXT', accepted: ['three'], strict: true } },
+      response,
+    );
+    expect(result.score).toBe(score);
+  });
+
+  it('không quy chính tả Mỹ về chính tả Anh', () => {
+    const result = scoreQuestion(
+      {
+        marks: 1,
+        answer: { kind: 'TEXT', accepted: ['colour'], strict: true },
+      },
+      'color',
+    );
+    expect(result.score).toBe(0);
+  });
+});

@@ -27,12 +27,18 @@ import { CreateTopicDto } from './dto/create-topic.dto';
 import { TopicAdminQueryDto, TopicQueryDto } from './dto/topic-query.dto';
 import { TopicDto } from './dto/topic.dto';
 import { UpdateTopicDto } from './dto/update-topic.dto';
+import { VocabularyQueryDto } from '../vocabulary/dto/vocabulary-query.dto';
+import { VocabularySummaryDto } from '../vocabulary/dto/vocabulary.dto';
+import { TopicWordService } from './topic-word.service';
 import { TopicService } from './topic.service';
 
 @ApiTags('Topics')
 @Controller('topics')
 export class TopicController {
-  constructor(private readonly topics: TopicService) {}
+  constructor(
+    private readonly topics: TopicService,
+    private readonly topicWords: TopicWordService,
+  ) {}
 
   @Public()
   @Get()
@@ -63,6 +69,17 @@ export class TopicController {
   @ApiSuccessResponse(TopicDto)
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<TopicDto> {
     return this.topics.findOne(id);
+  }
+
+  @Public()
+  @Get(':id/words')
+  @ApiOperation({ summary: 'Danh sách từ của một chủ đề (công khai)' })
+  @ApiPaginatedResponse(VocabularySummaryDto)
+  findWords(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: VocabularyQueryDto,
+  ): Promise<PaginatedResult<VocabularySummaryDto>> {
+    return this.topicWords.list(id, query, 'public');
   }
 
   @Post()

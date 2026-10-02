@@ -13,6 +13,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { URL_OPTIONS } from '../../../common/constants/url.constant';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 import {
   toBoolean,
@@ -57,10 +58,7 @@ export class CreateCourseDto {
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
-  @IsUrl(
-    { require_protocol: true },
-    { message: 'thumbnailUrl phải là URL hợp lệ' },
-  )
+  @IsUrl(URL_OPTIONS, { message: 'thumbnailUrl phải là URL hợp lệ' })
   @MaxLength(2048)
   thumbnailUrl?: string | null;
 

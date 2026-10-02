@@ -18,10 +18,15 @@ const NUMBER_TOKEN = /^[£$€]?\d+(?:\.\d+)?(?:%|am|pm)?$/;
  * "7:30" thành "7.30", chính tả Mỹ thành chính tả Anh.
  * Không bỏ mạo từ và không sửa lỗi chính tả: đáp án muốn cho phép thì ghi "(the)".
  */
-export function normalizeTokens(raw: string): string[] {
-  const text = raw
-    .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
+export function normalizeTokens(
+  raw: string,
+  options: NormalizeOptions = {},
+): string[] {
+  const strict = options.strict === true;
+  const decomposed = strict
+    ? raw.normalize('NFC')
+    : raw.normalize('NFKD').replace(/\p{M}/gu, '');
+  const text = decomposed
     .replace(ZERO_WIDTH, '')
     .toLowerCase()
     .replace(SINGLE_QUOTES, "'")
@@ -34,8 +39,17 @@ export function normalizeTokens(raw: string): string[] {
   }
   return text
     .split(' ')
-    .map(canonToken)
+    .map((token) => (strict ? trimToken(token) : canonToken(token)))
     .filter((token) => token !== '');
+}
+
+export interface NormalizeOptions {
+  /** Chỉ bỏ qua hoa thường, dấu câu ở hai đầu và khoảng trắng. Không đổi số, chính tả, dấu thanh. */
+  strict?: boolean;
+}
+
+function trimToken(raw: string): string {
+  return raw.replace(LEADING_JUNK, '').replace(TRAILING_JUNK, '');
 }
 
 export function canonToken(raw: string): string {
@@ -68,8 +82,14 @@ export function isNumberToken(token: string): boolean {
  * Các khoá so sánh của một câu trả lời. Gạch nối được coi như dấu cách hoặc viết liền,
  * nên "part-time", "part time" và "parttime" khớp nhau.
  */
-export function comparisonKeys(tokens: readonly string[]): string[] {
+export function comparisonKeys(
+  tokens: readonly string[],
+  strict = false,
+): string[] {
   const joined = tokens.join(' ');
+  if (strict) {
+    return [joined];
+  }
   const spaced = joined.replace(/-/g, ' ');
   const closed = joined.replace(/-/g, '');
   return spaced === closed ? [spaced] : [spaced, closed];

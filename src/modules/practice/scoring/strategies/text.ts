@@ -22,15 +22,16 @@ export function scoreTextSlot(
   response: string,
   compiled: ReadonlySet<string>,
   wordLimit?: WordLimit | null,
+  strict = false,
 ): SlotResult {
-  const tokens = normalizeTokens(response);
+  const tokens = normalizeTokens(response, { strict });
   if (tokens.length === 0) {
     return BLANK;
   }
   if (wordLimit && !withinLimit(tokens, wordLimit)) {
     return OVER_WORD_LIMIT;
   }
-  return comparisonKeys(tokens).some((key) => compiled.has(key))
+  return comparisonKeys(tokens, strict).some((key) => compiled.has(key))
     ? CORRECT
     : WRONG;
 }
@@ -44,5 +45,13 @@ export function scoreText(
   if (value === null) {
     return [INVALID];
   }
-  return [scoreTextSlot(value, compileText(answer.accepted), wordLimit)];
+  const strict = answer.strict === true;
+  return [
+    scoreTextSlot(
+      value,
+      compileText(answer.accepted, strict),
+      wordLimit,
+      strict,
+    ),
+  ];
 }

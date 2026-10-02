@@ -20,12 +20,15 @@ export interface OptionSetAnswer {
 export interface TextAnswer {
   kind: 'TEXT';
   accepted: string[];
+  /** true = so khớp nghiêm: chỉ bỏ qua hoa thường, dấu câu, khoảng trắng. Dùng cho bài chính tả, viết số bằng chữ. */
+  strict?: boolean;
 }
 
 /** Nhiều ô điền từ chấm chung, không tính thứ tự ("IN EITHER ORDER"). Mỗi item là một ô. */
 export interface TextSetAnswer {
   kind: 'TEXT_SET';
   items: { accepted: string[] }[];
+  strict?: boolean;
 }
 
 export type AnswerSpec =

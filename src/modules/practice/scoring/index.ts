@@ -28,6 +28,7 @@ export {
 } from './band';
 export type { BandTableKey } from './band';
 export { normalizeTokens } from './normalize';
+export type { NormalizeOptions } from './normalize';
 export { scoreAttempt } from './score-attempt';
 export type {
   AttemptQuestion,
@@ -36,3 +37,11 @@ export type {
 } from './score-attempt';
 export { scoreQuestion } from './score-question';
 export { describeWordLimit, withinLimit } from './word-limit';
+export {
+  TOEIC_MAX_SCALED,
+  TOEIC_MIN_SCALED,
+  TOEIC_SECTION_QUESTIONS,
+  TOEIC_TABLE_VERSION,
+  toeicScaledScore,
+} from './toeic';
+export type { ToeicSection } from './toeic';

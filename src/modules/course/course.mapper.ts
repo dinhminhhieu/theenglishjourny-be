@@ -1,5 +1,9 @@
 import { decimalToNumber } from '../../common/utils/decimal.util';
-import { LessonStatus, Prisma } from '../../generated/prisma/client';
+import {
+  LessonProgressStatus,
+  LessonStatus,
+  Prisma,
+} from '../../generated/prisma/client';
 import type { CourseAccess } from './course-access.service';
 import { CourseDetailDto, CourseDto } from './dto/course.dto';
 import { LessonBlockDto } from './dto/lesson-block.dto';
@@ -10,6 +14,7 @@ import {
   PublicLessonBlockDto,
   PublicLessonDetailDto,
   PublicLessonSummaryDto,
+  PublicTestRefDto,
 } from './dto/public-course.dto';
 
 export const LESSON_INCLUDE = {
@@ -77,6 +82,19 @@ export const PUBLIC_LESSON_DETAIL_INCLUDE = {
           status: true,
           deletedAt: true,
           category: { select: { isActive: true, deletedAt: true } },
+        },
+      },
+      test: {
+        select: {
+          id: true,
+          code: true,
+          title: true,
+          kind: true,
+          status: true,
+          deletedAt: true,
+          currentRelease: {
+            select: { questionCount: true, durationMinutes: true },
+          },
         },
       },
     },
@@ -170,6 +188,7 @@ export function toLessonDetailDto(row: LessonDetailRow): LessonDetailDto {
       instructions: block.instructions,
       xpReward: block.xpReward,
       grammarLessonId: block.grammarLessonId,
+      testId: block.testId,
       sortOrder: block.sortOrder,
     })),
   };
@@ -229,9 +248,17 @@ export function toPublicLessonSummaryDto(
   };
 }
 
+export interface LessonProgressView {
+  status: LessonProgressStatus;
+  completedBlockIds: string[];
+  completedAt: Date | null;
+}
+
 export function toPublicLessonDetailDto(
   row: PublicLessonDetailRow,
+  progress: LessonProgressView | null = null,
 ): PublicLessonDetailDto {
+  const completed = new Set(progress?.completedBlockIds ?? []);
   return {
     ...toPublicLessonSummaryDto(row),
     courseId: row.course.id,
@@ -257,7 +284,40 @@ export function toPublicLessonDetailDto(
         grammarLesson: isGrammarVisible
           ? { id: grammar.id, code: grammar.code, title: grammar.title }
           : null,
+        test: toPublicTestRef(block.test),
+        completed: completed.has(block.id),
       };
     }),
+    progress: progress
+      ? {
+          status: progress.status,
+          completedBlocks: row.blocks.filter((block) => completed.has(block.id))
+            .length,
+          totalBlocks: row.blocks.length,
+          completedAt: progress.completedAt,
+        }
+      : null,
+  };
+}
+
+/** Đề của block chỉ hiện khi đã phát hành và chưa xoá, giống cách ẩn bài ngữ pháp nháp. */
+function toPublicTestRef(
+  test: PublicLessonDetailRow['blocks'][number]['test'],
+): PublicTestRefDto | null {
+  if (
+    !test ||
+    test.status !== LessonStatus.PUBLISHED ||
+    test.deletedAt !== null ||
+    !test.currentRelease
+  ) {
+    return null;
+  }
+  return {
+    id: test.id,
+    code: test.code,
+    title: test.title,
+    kind: test.kind,
+    questionCount: test.currentRelease.questionCount,
+    durationMinutes: test.currentRelease.durationMinutes,
   };
 }

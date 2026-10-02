@@ -58,6 +58,16 @@ export class LessonBlockInputDto {
   @IsOptional()
   @IsUUID()
   grammarLessonId?: string | null;
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    nullable: true,
+    description:
+      'Đề luyện tập của block. Block có đề thì hoàn thành khi nộp bài, không có đề thì học viên tự bấm hoàn thành',
+  })
+  @IsOptional()
+  @IsUUID()
+  testId?: string | null;
 }
 
 export class ReplaceLessonBlocksDto {
@@ -96,6 +106,9 @@ export class LessonBlockDto {
 
   @ApiProperty({ type: String, format: 'uuid', nullable: true })
   grammarLessonId: string | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  testId: string | null;
 
   @ApiProperty()
   sortOrder: number;

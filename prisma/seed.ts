@@ -1,5 +1,9 @@
+import 'reflect-metadata';
 import 'dotenv/config';
 import { CefrLevel, PrismaClient } from '../src/generated/prisma/client';
+import { SEED_ITEM_SETS, SEED_TESTS } from './seeds/practice-content';
+import { seedItemSet, seedTest } from './seeds/practice-seeder';
+import { seedTopics } from './seeds/topic-seeder';
 
 const prisma = new PrismaClient();
 
@@ -99,11 +103,25 @@ async function main(): Promise<void> {
     });
   }
 
-  const [skills, levels] = await Promise.all([
+  await seedTopics(prisma);
+
+  for (const itemSet of SEED_ITEM_SETS) {
+    await seedItemSet(prisma, itemSet);
+  }
+  for (const test of SEED_TESTS) {
+    await seedTest(prisma, test);
+  }
+
+  const [skills, levels, topics, itemSets, tests] = await Promise.all([
     prisma.skill.count(),
     prisma.level.count(),
+    prisma.topic.count(),
+    prisma.itemSet.count(),
+    prisma.test.count(),
   ]);
-  console.log(`Seed xong: ${skills} skill, ${levels} level.`);
+  console.log(
+    `Seed xong: ${skills} skill, ${levels} level, ${topics} chủ đề, ${itemSets} bộ câu hỏi, ${tests} đề.`,
+  );
 }
 
 main()

@@ -6,7 +6,11 @@ import {
   toBoolean,
   trimString,
 } from '../../../common/transforms/query.transforms';
-import { LessonBlockKind } from '../../../generated/prisma/enums';
+import {
+  LessonBlockKind,
+  LessonProgressStatus,
+  TestKind,
+} from '../../../generated/prisma/enums';
 import { CourseDto } from './course.dto';
 import { LessonDto } from './lesson.dto';
 
@@ -87,6 +91,43 @@ export class PublicGrammarLessonRefDto {
   title: string;
 }
 
+export class PublicTestRefDto {
+  @ApiProperty({
+    format: 'uuid',
+    description: 'Dùng để gọi POST /lesson-blocks/:id/attempts',
+  })
+  id: string;
+
+  @ApiProperty({ example: 'UNIT3-READING' })
+  code: string;
+
+  @ApiProperty()
+  title: string;
+
+  @ApiProperty({ enum: TestKind, enumName: 'TestKind' })
+  kind: TestKind;
+
+  @ApiProperty()
+  questionCount: number;
+
+  @ApiProperty({ type: Number, nullable: true })
+  durationMinutes: number | null;
+}
+
+export class PublicLessonProgressDto {
+  @ApiProperty({ enum: LessonProgressStatus, enumName: 'LessonProgressStatus' })
+  status: LessonProgressStatus;
+
+  @ApiProperty()
+  completedBlocks: number;
+
+  @ApiProperty()
+  totalBlocks: number;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  completedAt: Date | null;
+}
+
 export class PublicLessonBlockDto {
   @ApiProperty({ format: 'uuid' })
   id: string;
@@ -113,6 +154,20 @@ export class PublicLessonBlockDto {
       'Bài ngữ pháp của block GRAMMAR. null nếu block thuộc loại khác hoặc bài chưa phát hành.',
   })
   grammarLesson: PublicGrammarLessonRefDto | null;
+
+  @ApiProperty({
+    type: PublicTestRefDto,
+    nullable: true,
+    description:
+      'Đề luyện tập của block. null nếu block không có đề hoặc đề chưa phát hành.',
+  })
+  test: PublicTestRefDto | null;
+
+  @ApiProperty({
+    description:
+      'Người đang gọi đã hoàn thành block này chưa. Khách luôn là false.',
+  })
+  completed: boolean;
 }
 
 export class PublicLessonDetailDto extends PublicLessonSummaryDto {
@@ -135,4 +190,11 @@ export class PublicLessonDetailDto extends PublicLessonSummaryDto {
 
   @ApiProperty({ type: [PublicLessonBlockDto] })
   blocks: PublicLessonBlockDto[];
+
+  @ApiProperty({
+    type: PublicLessonProgressDto,
+    nullable: true,
+    description: 'Tiến độ của người đang gọi. null với khách hoặc chưa học.',
+  })
+  progress: PublicLessonProgressDto | null;
 }

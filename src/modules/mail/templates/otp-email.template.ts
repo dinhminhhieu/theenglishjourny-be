@@ -1,4 +1,4 @@
-export const BRAND_NAME = 'The IELTS Foundation';
+export const BRAND_NAME = 'The English Journey';
 
 export interface OtpEmailParams {
   /** Hành động của email, dùng cho <title>. Vd "Xác thực email". */

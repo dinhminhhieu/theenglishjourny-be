@@ -41,15 +41,18 @@ export function expandOptional(value: string): string[] {
 }
 
 /** Tập khoá so sánh của mọi cách viết được chấp nhận, dùng để chấm một ô điền từ. */
-export function compileText(accepted: readonly string[]): Set<string> {
+export function compileText(
+  accepted: readonly string[],
+  strict = false,
+): Set<string> {
   const keys = new Set<string>();
   for (const value of accepted) {
     for (const variant of expandOptional(value)) {
-      const tokens = normalizeTokens(variant);
+      const tokens = normalizeTokens(variant, { strict });
       if (tokens.length === 0) {
         continue;
       }
-      for (const key of comparisonKeys(tokens)) {
+      for (const key of comparisonKeys(tokens, strict)) {
         keys.add(key);
       }
     }
@@ -64,8 +67,11 @@ export function compileText(accepted: readonly string[]): Set<string> {
 export function findVariantsOverLimit(
   accepted: readonly string[],
   limit: WordLimit,
+  strict = false,
 ): string[] {
   return accepted
     .flatMap(expandOptional)
-    .filter((variant) => !withinLimit(normalizeTokens(variant), limit));
+    .filter(
+      (variant) => !withinLimit(normalizeTokens(variant, { strict }), limit),
+    );
 }

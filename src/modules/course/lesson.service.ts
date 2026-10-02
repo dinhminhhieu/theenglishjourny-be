@@ -97,7 +97,13 @@ export class LessonService {
       throw new NotFoundException(LESSON_NOT_FOUND);
     }
     await this.access.assertCanLearn(row.course, user);
-    return toPublicLessonDetailDto(row);
+    const progress = user
+      ? await this.prisma.userLessonProgress.findUnique({
+          where: { userId_lessonId: { userId: user.id, lessonId: row.id } },
+          select: { status: true, completedBlockIds: true, completedAt: true },
+        })
+      : null;
+    return toPublicLessonDetailDto(row, progress);
   }
 
   async findOne(id: string): Promise<LessonDetailDto> {
@@ -250,6 +256,32 @@ export class LessonService {
         ),
       ),
     ];
+    const testIds = [
+      ...new Set(
+        dto.blocks.flatMap((block) => (block.testId ? [block.testId] : [])),
+      ),
+    ];
+    const tests = await this.prisma.test.findMany({
+      where: { id: { in: testIds }, deletedAt: null },
+      select: { id: true, skill: true },
+    });
+    const testSkill = new Map(tests.map((test) => [test.id, test.skill]));
+    dto.blocks.forEach((block, index) => {
+      if (!block.testId) {
+        return;
+      }
+      if (!testSkill.has(block.testId)) {
+        throw new BadRequestException(
+          `blocks[${index}]: đề ${block.testId} không tồn tại`,
+        );
+      }
+      const skill = testSkill.get(block.testId);
+      if (skill && skill !== (block.kind as string)) {
+        throw new BadRequestException(
+          `blocks[${index}]: đề ${block.testId} là đề ${skill}, không dùng cho block ${block.kind}`,
+        );
+      }
+    });
     const [skills, grammarLessons, existing] = await Promise.all([
       this.prisma.skill.findMany({
         where: { id: { in: skillIds }, isActive: true },
@@ -313,6 +345,7 @@ export class LessonService {
           instructions: block.instructions ?? null,
           xpReward: block.xpReward ?? 20,
           grammarLessonId: block.grammarLessonId ?? null,
+          testId: block.testId ?? null,
           sortOrder: index,
         };
         return block.id

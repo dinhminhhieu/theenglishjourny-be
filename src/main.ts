@@ -1,12 +1,15 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { AppConfigService, Environment } from './config/env.validation';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Mặc định 100 KB, không đủ cho admin nhập nhiều bộ câu hỏi một lần. File audio, ảnh không đi qua API.
+  app.useBodyParser('json', { limit: '5mb' });
   const config = app.get<AppConfigService>(ConfigService);
 
   const port = config.get('PORT', { infer: true });
@@ -26,7 +29,7 @@ async function bootstrap(): Promise<void> {
 
   if (config.get('NODE_ENV', { infer: true }) !== Environment.Production) {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('The IELTS Foundation API')
+      .setTitle('The English Journey API')
       .setVersion('1.0')
       .addBearerAuth()
       .build();

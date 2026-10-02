@@ -21,6 +21,9 @@ export class TopicDto {
   @ApiProperty({ example: true })
   isActive: boolean;
 
+  @ApiProperty({ example: 120, description: 'Số từ vựng trong chủ đề' })
+  wordCount: number;
+
   @ApiProperty({
     type: String,
     format: 'date-time',

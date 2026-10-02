@@ -12,7 +12,7 @@ import { CreateTopicDto } from './dto/create-topic.dto';
 import { TopicAdminQueryDto, TopicQueryDto } from './dto/topic-query.dto';
 import { TopicDto } from './dto/topic.dto';
 import { UpdateTopicDto } from './dto/update-topic.dto';
-import { toTopicDto } from './topic.mapper';
+import { TOPIC_INCLUDE, toTopicDto } from './topic.mapper';
 
 const TOPIC_NOT_FOUND = 'Không tìm thấy chủ đề';
 
@@ -43,6 +43,18 @@ export class TopicService {
   async findOne(id: string): Promise<TopicDto> {
     const topic = await this.prisma.topic.findFirst({
       where: { id, deletedAt: null, isActive: true },
+      include: TOPIC_INCLUDE,
+    });
+    if (!topic) {
+      throw new NotFoundException(TOPIC_NOT_FOUND);
+    }
+    return toTopicDto(topic);
+  }
+
+  async findForAdmin(id: string): Promise<TopicDto> {
+    const topic = await this.prisma.topic.findUnique({
+      where: { id },
+      include: TOPIC_INCLUDE,
     });
     if (!topic) {
       throw new NotFoundException(TOPIC_NOT_FOUND);
@@ -77,6 +89,7 @@ export class TopicService {
     const updated = await this.prisma.topic.update({
       where: { id },
       data: { ...dto, updatedBy: actorId },
+      include: TOPIC_INCLUDE,
     });
     return toTopicDto(updated);
   }
@@ -87,6 +100,7 @@ export class TopicService {
     const removed = await this.prisma.topic.update({
       where: { id },
       data: { deletedAt: new Date(), updatedBy: actorId },
+      include: TOPIC_INCLUDE,
     });
     return toTopicDto(removed);
   }
@@ -101,6 +115,7 @@ export class TopicService {
     const restored = await this.prisma.topic.update({
       where: { id },
       data: { deletedAt: null, updatedBy: actorId },
+      include: TOPIC_INCLUDE,
     });
     return toTopicDto(restored);
   }
@@ -117,6 +132,7 @@ export class TopicService {
         orderBy: { name: 'asc' },
         skip: (pageIndex - 1) * pageLimit,
         take: pageLimit,
+        include: TOPIC_INCLUDE,
       }),
     ]);
     return {

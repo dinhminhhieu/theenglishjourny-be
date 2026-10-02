@@ -1,9 +1,7 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
-  HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
@@ -60,15 +58,5 @@ export class AdminSkillController {
     @Body() dto: UpdateSkillDto,
   ): Promise<SkillDto> {
     return this.skills.update(id, dto);
-  }
-
-  @Delete(':id')
-  @HttpCode(HttpStatus.OK)
-  @ResponseMessage('Đã xoá kỹ năng')
-  @ApiOperation({ summary: 'Xoá kỹ năng (chỉ khi chưa được dùng)' })
-  @ApiSuccessResponse()
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<null> {
-    await this.skills.remove(id);
-    return null;
   }
 }

@@ -26,9 +26,12 @@ export function scoreTextSet(
     ...values,
     ...Array.from({ length: size - values.length }, () => ''),
   ];
-  const compiled = answer.items.map((item) => compileText(item.accepted));
+  const strict = answer.strict === true;
+  const compiled = answer.items.map((item) =>
+    compileText(item.accepted, strict),
+  );
   const matrix = padded.map((value) =>
-    compiled.map((keys) => scoreTextSlot(value, keys, wordLimit)),
+    compiled.map((keys) => scoreTextSlot(value, keys, wordLimit, strict)),
   );
 
   let best: SlotResult[] = matrix.map((row) => row[0]);

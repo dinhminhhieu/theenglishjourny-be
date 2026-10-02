@@ -1,10 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import {
-  ClassConstructor,
-  instanceToPlain,
-  plainToInstance,
-} from 'class-transformer';
-import { validateSync, ValidationError } from 'class-validator';
+import { ClassConstructor } from 'class-transformer';
+import { validateJsonByDto } from '../../common/validators/validate-json-by-dto';
 import { SectionType } from '../../generated/prisma/enums';
 import {
   CalloutContentDto,
@@ -37,26 +33,14 @@ export function validateSectionContent(
   content: unknown,
   label: string,
 ): Record<string, unknown> {
-  const dto = CONTENT_DTO_BY_TYPE[type];
-  const instance = plainToInstance(dto, content ?? {});
-  const errors = validateSync(instance, {
-    whitelist: true,
-    forbidNonWhitelisted: true,
-  });
+  const { value, errors } = validateJsonByDto(
+    CONTENT_DTO_BY_TYPE[type],
+    content ?? {},
+  );
   if (errors.length > 0) {
     throw new BadRequestException({
-      message: flattenErrors(errors).map((error) => `${label}: ${error}`),
+      message: errors.map((error) => `${label}: ${error}`),
     });
   }
-  return instanceToPlain(instance) as Record<string, unknown>;
-}
-
-function flattenErrors(errors: ValidationError[], parent = ''): string[] {
-  return errors.flatMap((error) => {
-    const path = parent ? `${parent}.${error.property}` : error.property;
-    const own = Object.values(error.constraints ?? {}).map(
-      (message) => `${path}: ${message}`,
-    );
-    return [...own, ...flattenErrors(error.children ?? [], path)];
-  });
+  return value;
 }

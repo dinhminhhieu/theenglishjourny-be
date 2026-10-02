@@ -137,6 +137,8 @@ enum XpReason {
   TEST_UNLOCK
   REFUND
   ADMIN_ADJUST
+  /// Hoàn thành một đề lần đầu, refId = testId.
+  TEST_COMPLETED
 }
 
 /// Tính năng có hạn mức sử dụng theo ngày.
@@ -193,6 +195,8 @@ model User {
   orders                Order[]
   xpTransactions        XpTransaction[]
   featureUsages         FeatureUsage[]
+  assets                Asset[]
+  attempts              Attempt[]
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -426,6 +430,7 @@ model GrammarLesson {
   sections          GrammarSection[]
   progress          UserGrammarLessonProgress[]
   lessonBlocks      LessonBlock[]
+  questions         Question[]
   level             Level?                      @relation(fields: [levelId], references: [id])
   levelId           String?                     @db.Uuid
 
@@ -576,7 +581,14 @@ model LessonBlock {
   grammarLessonId String?        @db.Uuid
   grammarLesson   GrammarLesson? @relation(fields: [grammarLessonId], references: [id])
 
+  /// Đề luyện tập của block. Block kỹ năng làm bài qua đề này, xong bài thì block tính là hoàn thành.
+  testId String? @db.Uuid
+  test   Test?   @relation(fields: [testId], references: [id], onDelete: SetNull)
+
+  attempts Attempt[]
+
   @@index([lessonId, sortOrder])
+  @@index([testId])
   @@map("lesson_blocks")
 }
 
@@ -678,16 +690,421 @@ model XpTransaction {
 
 /// Mỗi lần dùng một tính năng có hạn mức. Đếm theo ngày để biết còn lượt miễn phí không.
 model FeatureUsage {
-  id        String      @id @default(uuid(7)) @db.Uuid
-  feature   FeatureKey
-  source    UsageSource
+  id      String      @id @default(uuid(7)) @db.Uuid
+  feature FeatureKey
+  source  UsageSource
 
   refId     String?
-  createdAt DateTime    @default(now())
+  createdAt DateTime @default(now())
 
   userId String @db.Uuid
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, feature, createdAt])
   @@map("feature_usages")
+}
+
+// ---------- File ----------
+
+/// Mục đích của file, quyết định loại file và dung lượng được phép, bucket public hay private.
+enum AssetPurpose {
+  AUDIO
+  IMAGE
+  RECORDING
+}
+
+enum AssetVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+/// PENDING: đã cấp link upload nhưng chưa xác nhận. READY: file đã có trên storage và đúng loại, dung lượng.
+enum AssetStatus {
+  PENDING
+  READY
+}
+
+/// File trên object storage (S3, R2, MinIO). Bucket chọn theo visibility, key không đổi sau khi tạo.
+model Asset {
+  id              String          @id @default(uuid(7)) @db.Uuid
+  key             String          @unique
+  purpose         AssetPurpose
+  visibility      AssetVisibility
+  status          AssetStatus     @default(PENDING)
+  contentType     String
+  sizeBytes       Int?
+  durationSeconds Int?
+  originalName    String?
+  confirmedAt     DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  uploadedById String? @db.Uuid
+  uploadedBy   User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  itemSets        ItemSet[]
+  itemSetReleases ItemSetRelease[]
+
+  @@index([status, createdAt])
+  @@index([purpose, createdAt])
+  @@map("assets")
+}
+
+// ---------- Ngân hàng câu hỏi và đề ----------
+
+/// Kỳ thi. Cấu trúc chi tiết của từng kỳ thi (part, số câu, thời gian, thang điểm) khai báo trong code.
+enum Exam {
+  IELTS
+  TOEIC
+  GENERAL
+}
+
+/// IELTS, TOEIC dùng bốn kỹ năng đầu. GRAMMAR, VOCABULARY dành cho bài tập tự do.
+enum ExamSkill {
+  LISTENING
+  READING
+  WRITING
+  SPEAKING
+  GRAMMAR
+  VOCABULARY
+}
+
+/// Chỉ IELTS: Reading và Writing khác nhau giữa Academic và General Training.
+enum IeltsModule {
+  ACADEMIC
+  GENERAL_TRAINING
+}
+
+/// FULL: đủ các kỹ năng chấm tự động của kỳ thi. SECTION: trọn một kỹ năng.
+/// PRACTICE: bài luyện tự chọn, không quy đổi band hay điểm TOEIC.
+enum TestKind {
+  FULL
+  SECTION
+  PRACTICE
+}
+
+/// Bộ câu hỏi: ngữ liệu chung (bài đọc, audio, hình) và các câu hỏi đi theo, là đơn vị tái sử dụng của ngân hàng câu hỏi.
+/// Bảng này là bản nháp để admin sửa. Người học chỉ thấy bản phát hành (ItemSetRelease).
+model ItemSet {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  code        String  @unique
+  title       String
+  description String?
+
+  exam   Exam
+  skill  ExamSkill
+  module IeltsModule?
+  /// Part theo định dạng kỳ thi: TOEIC 1-7, IELTS Listening 1-4, IELTS Reading 1-3. null với bài tập tự do.
+  part   Int?
+
+  /// { passages: Passage[], images: Image[] }
+  stimulus   Json @default("{}")
+  /// Transcript của audio, chỉ trả khi xem lại bài.
+  transcript Json @default("[]")
+
+  audioAssetId String? @db.Uuid
+  audioAsset   Asset?  @relation(fields: [audioAssetId], references: [id])
+
+  /// 1 dễ nhất, 5 khó nhất.
+  difficulty      Int?
+  levelFrom       CefrLevel?
+  levelTo         CefrLevel?
+  tags            String[]   @default([])
+  /// Nguồn và giấy phép nội dung. Chỉ admin thấy.
+  source          String?
+  /// Cho phép hệ thống bốc bộ này vào phần luyện theo part. Tắt với bộ dành riêng cho đề trả phí.
+  practiceEnabled Boolean    @default(true)
+
+  questionCount Int @default(0)
+  totalMarks    Int @default(0)
+
+  status            LessonStatus    @default(DRAFT)
+  publishedAt       DateTime?
+  /// Bản phát hành được dùng khi thêm bộ này vào đề hoặc bốc luyện tập.
+  currentReleaseId  String?         @unique @db.Uuid
+  currentRelease    ItemSetRelease? @relation("CurrentItemSetRelease", fields: [currentReleaseId], references: [id])
+  /// Tăng mỗi lần sửa. Khác publishedRevision nghĩa là bản nháp có thay đổi chưa phát hành.
+  revision          Int             @default(1)
+  publishedRevision Int?
+
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  groups    QuestionGroup[]
+  releases  ItemSetRelease[] @relation("ItemSetReleases")
+  testItems TestItem[]
+
+  @@index([exam, skill, part, status])
+  @@map("item_sets")
+}
+
+model QuestionGroup {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  /// Mã dạng câu theo bảng đăng ký trong code, vd IELTS_MATCHING_HEADINGS, TOEIC_INCOMPLETE_SENTENCE.
+  type         String
+  instructions String   @default("")
+  /// Dữ liệu chung của nhóm theo dạng câu: danh sách lựa chọn, template có chỗ trống, bảng, hình.
+  content      Json     @default("{}")
+  /// Nhóm câu gắn với bài đọc nào khi bộ có nhiều bài đọc.
+  passageKey   String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  itemSetId String     @db.Uuid
+  itemSet   ItemSet    @relation(fields: [itemSetId], references: [id], onDelete: Cascade)
+  questions Question[]
+
+  @@index([itemSetId, sortOrder])
+  @@map("question_groups")
+}
+
+model Question {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  /// Số thứ tự trong bộ, server tự tính theo thứ tự và marks. Số hiển thị trong đề được cộng thêm offset.
+  number      Int
+  /// Số điểm, bằng số ô trả lời. Câu "Choose TWO" có marks = 2.
+  marks       Int      @default(1)
+  prompt      String?
+  content     Json     @default("{}")
+  /// Đáp án (AnswerSpec). Không bao giờ trả cho người học trước khi nộp.
+  answer      Json
+  explanation String?
+  /// Chỗ trong bài đọc hoặc transcript chứa đáp án, để hiện khi xem lại.
+  evidence    Json?
+  tags        String[] @default([])
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  groupId String        @db.Uuid
+  group   QuestionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  /// Bài ngữ pháp liên quan, để gợi ý ôn khi làm sai.
+  grammarLessonId String?        @db.Uuid
+  grammarLesson   GrammarLesson? @relation(fields: [grammarLessonId], references: [id], onDelete: SetNull)
+
+  @@index([groupId, sortOrder])
+  @@map("questions")
+}
+
+/// Bản chụp không sửa được của một bộ câu hỏi lúc phát hành. Đề và bài làm trỏ tới bản này,
+/// nên sửa bản nháp không làm đổi điểm hay nội dung của người đã làm.
+model ItemSetRelease {
+  id            String       @id @default(uuid(7)) @db.Uuid
+  version       Int
+  /// Nội dung cho người học: ngữ liệu và câu hỏi, không có đáp án.
+  content       Json
+  /// Đáp án, giải thích, transcript, dữ liệu chấm. Chỉ đọc khi chấm và xem lại.
+  answerKey     Json
+  questionCount Int
+  totalMarks    Int
+  exam          Exam
+  skill         ExamSkill
+  module        IeltsModule?
+  part          Int?
+  createdBy     String?
+  createdAt     DateTime     @default(now())
+
+  itemSetId    String   @db.Uuid
+  itemSet      ItemSet  @relation("ItemSetReleases", fields: [itemSetId], references: [id], onDelete: Restrict)
+  currentOf    ItemSet? @relation("CurrentItemSetRelease")
+  audioAssetId String?  @db.Uuid
+  audioAsset   Asset?   @relation(fields: [audioAssetId], references: [id], onDelete: Restrict)
+
+  @@unique([itemSetId, version])
+  @@index([exam, skill, part])
+  @@map("item_set_releases")
+}
+
+/// Đề: danh sách bộ câu hỏi theo định dạng kỳ thi. Bảng này là bản nháp, người học làm trên TestRelease.
+model Test {
+  id           String  @id @default(uuid(7)) @db.Uuid
+  code         String  @unique
+  title        String
+  description  String?
+  thumbnailUrl String?
+
+  exam            Exam
+  module          IeltsModule?
+  kind            TestKind
+  /// Kỹ năng của đề SECTION. null với đề FULL và bài luyện nhiều kỹ năng.
+  skill           ExamSkill?
+  /// Thời gian làm ở chế độ thi thử. null = lấy theo định dạng kỳ thi.
+  durationMinutes Int?
+
+  /// Hiện trong thư viện đề. false = chỉ dùng trong unit của khoá học.
+  isListed Boolean @default(true)
+  /// XP để mở khoá. 0 = ai đã đăng nhập đều làm được.
+  xpCost   Int     @default(0)
+
+  sortOrder         Int          @default(0)
+  status            LessonStatus @default(DRAFT)
+  publishedAt       DateTime?
+  currentReleaseId  String?      @unique @db.Uuid
+  currentRelease    TestRelease? @relation("CurrentTestRelease", fields: [currentReleaseId], references: [id])
+  revision          Int          @default(1)
+  publishedRevision Int?
+
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  items        TestItem[]
+  releases     TestRelease[] @relation("TestReleases")
+  lessonBlocks LessonBlock[]
+  attempts     Attempt[]
+
+  @@index([exam, kind, status])
+  @@map("tests")
+}
+
+model TestItem {
+  sortOrder Int
+
+  testId    String  @db.Uuid
+  test      Test    @relation(fields: [testId], references: [id], onDelete: Cascade)
+  itemSetId String  @db.Uuid
+  itemSet   ItemSet @relation(fields: [itemSetId], references: [id], onDelete: Restrict)
+
+  @@id([testId, itemSetId])
+  @@index([itemSetId])
+  @@map("test_items")
+}
+
+/// Bản chụp cấu trúc đề lúc phát hành: các phần, bản phát hành của từng bộ câu hỏi, số câu bắt đầu.
+model TestRelease {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  version         Int
+  /// { sections: [{ skill, title, durationMinutes, items: [{ itemSetReleaseId, itemSetId, part, firstNumber, questionCount, totalMarks }] }] }
+  structure       Json
+  durationMinutes Int?
+  questionCount   Int
+  totalMarks      Int
+  createdBy       String?
+  createdAt       DateTime @default(now())
+
+  testId    String    @db.Uuid
+  test      Test      @relation("TestReleases", fields: [testId], references: [id], onDelete: Restrict)
+  currentOf Test?     @relation("CurrentTestRelease")
+  attempts  Attempt[]
+
+  @@unique([testId, version])
+  @@map("test_releases")
+}
+
+// ---------- Bài làm ----------
+
+/// EXAM: thi thử, có giờ, nộp xong mới xem đáp án. PRACTICE: luyện tập, không giờ, xem đáp án từng câu.
+enum AttemptMode {
+  EXAM
+  PRACTICE
+}
+
+/// Bài làm bắt đầu từ đâu: đề trong thư viện, block trong unit, hay phần luyện theo part do hệ thống bốc.
+enum AttemptSource {
+  TEST
+  LESSON_BLOCK
+  CUSTOM
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+  ABANDONED
+}
+
+enum SubmitReason {
+  USER
+  TIMEOUT
+}
+
+model Attempt {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  mode      AttemptMode
+  source    AttemptSource
+  status    AttemptStatus @default(IN_PROGRESS)
+  /// "userId:nguồn:id" khi đang làm, null khi đã xong. Unique để mỗi người chỉ có một bài dở cho mỗi đề hoặc block.
+  activeKey String?       @unique
+
+  exam  Exam
+  title String
+
+  /// Bản chụp cấu trúc bài lúc bắt đầu: các phần, bản phát hành của từng bộ câu hỏi, số câu bắt đầu.
+  structure     Json
+  /// { [questionId]: { number, shape, marks } }, dùng để kiểm tra bài nháp mà không phải đọc cả đề.
+  questionIndex Json
+  questionCount Int
+  maxScore      Int
+
+  /// { [questionId]: câu trả lời }
+  draft              Json     @default("{}")
+  draftSeq           Int      @default(0)
+  /// Chế độ luyện tập: các câu đã xem đáp án, bị khoá không sửa được.
+  checkedQuestionIds String[] @default([])
+
+  startedAt    DateTime      @default(now())
+  deadlineAt   DateTime?
+  lastSavedAt  DateTime?
+  submittedAt  DateTime?
+  submitReason SubmitReason?
+  gradedAt     DateTime?
+
+  rawScore Int?
+  percent  Int?
+  /// Kết quả theo kỹ năng và điểm quy đổi (band IELTS, điểm TOEIC). Luôn là điểm ước tính.
+  result   Json?
+  /// Điểm tổng để sắp xếp: band IELTS, điểm TOEIC hoặc phần trăm.
+  score    Decimal? @db.Decimal(6, 1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId        String       @db.Uuid
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testId        String?      @db.Uuid
+  test          Test?        @relation(fields: [testId], references: [id], onDelete: SetNull)
+  testReleaseId String?      @db.Uuid
+  testRelease   TestRelease? @relation(fields: [testReleaseId], references: [id], onDelete: Restrict)
+  lessonBlockId String?      @db.Uuid
+  lessonBlock   LessonBlock? @relation(fields: [lessonBlockId], references: [id], onDelete: SetNull)
+
+  answers AttemptAnswer[]
+
+  @@index([userId, createdAt])
+  @@index([userId, testId])
+  @@index([status, deadlineAt])
+  @@map("attempts")
+}
+
+/// Kết quả từng câu, tạo lúc chấm. Không có FK tới Question vì câu gốc có thể bị sửa hoặc xoá sau đó.
+model AttemptAnswer {
+  questionId       String    @db.Uuid
+  itemSetId        String    @db.Uuid
+  itemSetReleaseId String    @db.Uuid
+  displayNumber    Int
+  marks            Int
+  questionType     String
+  skill            ExamSkill
+  part             Int?
+  response         Json?
+  score            Int
+  isCorrect        Boolean
+  slots            Json      @default("[]")
+  createdAt        DateTime  @default(now())
+
+  attemptId String  @db.Uuid
+  attempt   Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@id([attemptId, questionId])
+  @@index([questionId])
+  @@index([itemSetId])
+  @@index([questionType])
+  @@map("attempt_answers")
 }

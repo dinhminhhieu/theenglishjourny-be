@@ -20,6 +20,9 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer())
       .get('/')
       .expect(200)
-      .expect('Hello World!');
+      .expect(({ body }) => {
+        // Mọi response đều được TransformInterceptor bọc trong envelope chung.
+        expect(body).toMatchObject({ success: true, data: 'Hello World!' });
+      });
   });
 });

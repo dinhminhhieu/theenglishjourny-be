@@ -10,6 +10,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { URL_OPTIONS } from '../../../common/constants/url.constant';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 import {
   toBoolean,
@@ -38,7 +39,7 @@ export class CreateGrammarCategoryDto {
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
-  @IsUrl({ require_protocol: true }, { message: 'imageUrl phải là URL hợp lệ' })
+  @IsUrl(URL_OPTIONS, { message: 'imageUrl phải là URL hợp lệ' })
   @MaxLength(2048)
   imageUrl?: string | null;
 

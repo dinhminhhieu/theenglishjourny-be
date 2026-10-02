@@ -1,5 +1,5 @@
 {
-  "name": "theieltsfoundation-be",
+  "name": "theenglishjourney-be",
   "version": "0.0.1",
   "description": "",
   "author": "",
@@ -18,11 +18,18 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:db": "DATABASE_URL=${TEST_DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/theenglishjourney_test} sh -c 'prisma migrate deploy && jest --config ./test/jest-db.json --runInBand'",
     "postinstall": "prisma skills sync || exit 0",
     "vocab:import": "ts-node --transpile-only scripts/import-vocabulary.ts",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "db:seed:showcase": "ts-node --transpile-only prisma/seed-showcase.ts",
+    "db:seed:topics": "ts-node --transpile-only prisma/seed-topics.ts",
+    "storage:check": "ts-node --transpile-only scripts/storage-check.ts",
+    "storage:migrate": "ts-node --transpile-only scripts/storage-migrate.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1143.0",
+    "@aws-sdk/s3-request-presigner": "^3.1143.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",

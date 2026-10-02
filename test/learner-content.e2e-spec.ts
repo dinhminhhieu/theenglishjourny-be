@@ -206,6 +206,7 @@ describe('API người học (e2e, Prisma giả lập)', () => {
     course: { count: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
     lesson: { count: jest.fn(), findMany: jest.fn(), findFirst: jest.fn() },
     enrollment: { findMany: jest.fn() },
+    userLessonProgress: { findUnique: jest.fn() },
   };
 
   const jwt = {
@@ -259,6 +260,7 @@ describe('API người học (e2e, Prisma giả lập)', () => {
       }
     }
     prisma.enrollment.findMany.mockResolvedValue([]);
+    prisma.userLessonProgress.findUnique.mockResolvedValue(null);
   });
 
   const http = () => request(app.getHttpServer());
@@ -499,6 +501,40 @@ describe('API người học (e2e, Prisma giả lập)', () => {
         .expect(200);
 
       expect(res.body.data.blocks).toHaveLength(2);
+    });
+
+    it('GET /lessons/:id: người đã học thấy block nào xong và tiến độ unit', async () => {
+      prisma.lesson.findFirst.mockResolvedValue(lessonDetailRow(false));
+      prisma.userLessonProgress.findUnique.mockResolvedValue({
+        status: 'IN_PROGRESS',
+        completedBlockIds: ['01927f3a-7c1e-7000-8000-000000000007'],
+        completedAt: null,
+      });
+
+      const res = await http()
+        .get(`/lessons/${LESSON_ID}`)
+        .set('Authorization', 'Bearer learner-token')
+        .expect(200);
+
+      expect(
+        res.body.data.blocks.map(
+          (block: { completed: boolean }) => block.completed,
+        ),
+      ).toEqual([true, false]);
+      expect(res.body.data.progress).toEqual({
+        status: 'IN_PROGRESS',
+        completedBlocks: 1,
+        totalBlocks: 2,
+        completedAt: null,
+      });
+      expect(res.body.data.blocks[0].test).toBeNull();
+    });
+
+    it('GET /lessons/:id: khách không có tiến độ', async () => {
+      prisma.lesson.findFirst.mockResolvedValue(lessonDetailRow(false));
+      const res = await http().get(`/lessons/${LESSON_ID}`).expect(200);
+      expect(res.body.data.progress).toBeNull();
+      expect(prisma.userLessonProgress.findUnique).not.toHaveBeenCalled();
     });
 
     it('GET /lessons/:id: admin xem được khoá bị khoá để duyệt nội dung', async () => {

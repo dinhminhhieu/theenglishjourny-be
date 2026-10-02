@@ -13,6 +13,9 @@ import { SkillModule } from './modules/skill/skill.module';
 import { LevelModule } from './modules/level/level.module';
 import { GrammarModule } from './modules/grammar/grammar.module';
 import { CourseModule } from './modules/course/course.module';
+import { PracticeModule } from './modules/practice/practice.module';
+import { StorageModule } from './modules/storage/storage.module';
+import { XpModule } from './modules/xp/xp.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -28,6 +31,9 @@ import { PrismaModule } from './prisma/prisma.module';
     LevelModule,
     GrammarModule,
     CourseModule,
+    StorageModule,
+    XpModule,
+    PracticeModule,
   ],
   controllers: [AppController],
   providers: [
